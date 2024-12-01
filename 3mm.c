@@ -2,10 +2,26 @@
 #include "3mm.h"
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
+#include <stdbool.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <omp.h>
 
+#define Q(_v) #_v
+#define STR(_v) Q(_v)
 #define MIN(_A, _B) (((_A) < (_B)) ? _A : _B)
+#define MAX(_A, _B) (((_A) > (_B)) ? _A : _B)
 #define ROUNDDOWN(_A, _N) ((_A) / (_N) * (_N))
 #define ROUNDUP(_A, _N) (((_A) + (_N) - 1) / (_N) * (_N))
+#define EPS 0.01f
+#define PASTER3(x,y,z) x ## y ## z
+#define CONCAT3(x,y,z) PASTER3(x,y,z)
+
+#ifndef COMPUTE_DUMPS
+extern int CONCAT3(_binary_MATRIX, NI, _dump_start);
+float (*ans_mat)[NL] = (float (*)[NL]) &CONCAT3(_binary_MATRIX, NI, _dump_start);
+#endif
 
 double bench_t_start, bench_t_end;
 
@@ -31,27 +47,53 @@ void bench_timer_print() {
     printf("Time in seconds = %0.6lf\n", bench_t_end - bench_t_start);
 }
 
-static void init_array(int ni, int nj, int nk, int nl, int nm, float A[restrict ni][nk], float B[restrict nk][nj],
-                       float C[restrict nj][nm], float D[restrict nm][nl]) {
-    int i, j;
-
-    for (i = 0; i < ni; i++) {
-        for (j = 0; j < nk; j++) {
+static void init_array_orig(int ni, int nj, int nk, int nl, int nm, float A[restrict ni][nk], float B[restrict nk][nj],
+                            float C[restrict nj][nm], float D[restrict nm][nl]) {
+    for (int i = 0; i < ni; i++) {
+        for (int j = 0; j < nk; j++) {
             A[i][j] = (float) ((i * j + 1) % ni) / (5 * ni);
         }
     }
-    for (i = 0; i < nk; i++) {
-        for (j = 0; j < nj; j++) {
+    for (int i = 0; i < nk; i++) {
+        for (int j = 0; j < nj; j++) {
             B[i][j] = (float) ((i * (j + 1) + 2) % nj) / (5 * nj);
         }
     }
-    for (i = 0; i < nj; i++) {
-        for (j = 0; j < nm; j++) {
+    for (int i = 0; i < nj; i++) {
+        for (int j = 0; j < nm; j++) {
             C[i][j] = (float) (i * (j + 3) % nl) / (5 * nl);
         }
     }
-    for (i = 0; i < nm; i++) {
-        for (j = 0; j < nl; j++) {
+    for (int i = 0; i < nm; i++) {
+        for (int j = 0; j < nl; j++) {
+            D[i][j] = (float) ((i * (j + 2) + 2) % nk) / (5 * nk);
+        }
+    }
+}
+
+static void init_array(int ni, int nj, int nk, int nl, int nm, float A[restrict ni][nk], float B[restrict nk][nj],
+                       float C[restrict nj][nm], float D[restrict nm][nl]) {
+#pragma omp parallel for collapse(2)
+    for (int i = 0; i < ni; i++) {
+        for (int j = 0; j < nk; j++) {
+            A[i][j] = (float) ((i * j + 1) % ni) / (5 * ni);
+        }
+    }
+#pragma omp parallel for collapse(2)
+    for (int i = 0; i < nk; i++) {
+        for (int j = 0; j < nj; j++) {
+            B[i][j] = (float) ((i * (j + 1) + 2) % nj) / (5 * nj);
+        }
+    }
+#pragma omp parallel for collapse(2)
+    for (int i = 0; i < nj; i++) {
+        for (int j = 0; j < nm; j++) {
+            C[i][j] = (float) (i * (j + 3) % nl) / (5 * nl);
+        }
+    }
+#pragma omp parallel for collapse(2)
+    for (int i = 0; i < nm; i++) {
+        for (int j = 0; j < nl; j++) {
             D[i][j] = (float) ((i * (j + 2) + 2) % nk) / (5 * nk);
         }
     }
@@ -147,20 +189,20 @@ void matmul(int ni_, int nk_, int nj_, const float A_[restrict ni_][nk_], const 
     memset(B, 0, nk * sizeof(*B));
     memset(C, 0, ni * sizeof(*C));
     for (int i = 0; i < ni_; ++i) {
-        memcpy(&A[i], &A_[i], nk_);
-        memcpy(&C[i], &C_[i], nj_);
+        memcpy(&A[i], &A_[i], nk_ * sizeof(*A_[i]));
+        memcpy(&C[i], &C_[i], nj_ * sizeof(*C_[i]));
     }
     for (int k = 0; k < nk_; ++k) {
-        memcpy(&B[k], &B_[k], nj_);
+        memcpy(&B[k], &B_[k], nj_ * sizeof(*B_[k]));
     }
 
-    const int s3 = ROUNDDOWN(L3 / nk, 16);
-    const int s2 = ROUNDDOWN(L2 / nk, 6);
-    const int s1 = L1 / s3;
+    const int s3 = MAX(ROUNDDOWN(L3 / nk, 16), 1);
+    const int s2 = MAX(ROUNDDOWN(L2 / nk, 6), 1);
+    const int s1 = MAX(L1 / s3, 1);
     /* const int s3 = 64; */
     /* const int s2 = 120; */
     /* const int s1 = 240; */
-
+    #pragma omp parallel for collapse(2) proc_bind(spread)
     for (int i3 = 0; i3 < nj; i3 += s3) {
         // now we are working with b[:][i3:i3+s3]
         for (int i2 = 0; i2 < ni; i2 += s2) {
@@ -169,6 +211,7 @@ void matmul(int ni_, int nk_, int nj_, const float A_[restrict ni_][nk_], const 
                 // now we are working with b[i1:i1+s1][i3:i3+s3]
                 // this equates to updating c[i2:i2+s2][i3:i3+s3]
                 // with [l:r] = [i1:i1+s1]
+                #pragma omp parallel for collapse(2) proc_bind(close) num_threads(2)
                 for (int x = i2; x < MIN(i2 + s2, ni); x += 6) {
                     for (int y = i3; y < MIN(i3 + s3, nj); y += 16) {
                         microkernel(x, y, i1, MIN(i1 + s1, nk), nk, nj, A, (vec *) B, (vec *) C);
@@ -185,7 +228,7 @@ void matmul(int ni_, int nk_, int nj_, const float A_[restrict ni_][nk_], const 
     /* } */
 
     for (int i = 0; i < ni_; ++i) {
-        memcpy(&C_[i], &C[i], nj_);
+        memcpy(&C_[i], &C[i], nj_ * sizeof(*C_[i]));
     }
 
     // for (int i = 0; i < n; i++)
@@ -354,11 +397,11 @@ void matmul(int ni_, int nk_, int nj_, const float A_[restrict ni_][nk_], const 
     memset(B, 0, nk * sizeof(*B));
     memset(C, 0, ni * sizeof(*C));
     for (int i = 0; i < ni_; ++i) {
-        memcpy(&A[i], &A_[i], nk_);
-        memcpy(&C[i], &C_[i], nj_);
+        memcpy(&A[i], &A_[i], nk_ * sizeof(*A_[i]));
+        memcpy(&C[i], &C_[i], nj_ * sizeof(*C_[i]));
     }
     for (int k = 0; k < nk_; ++k) {
-        memcpy(&B[k], &B_[k], nj_);
+        memcpy(&B[k], &B_[k], nj_ * sizeof(*B_[k]));
     }
 
     const int s3 = ROUNDDOWN(L3 / nk, 16);
@@ -392,7 +435,7 @@ void matmul(int ni_, int nk_, int nj_, const float A_[restrict ni_][nk_], const 
     /* } */
 
     for (int i = 0; i < ni_; ++i) {
-        memcpy(&C_[i], &C[i], nj_);
+        memcpy(&C_[i], &C[i], nj_ * sizeof(*C_[i]));
     }
 
     // for (int i = 0; i < n; i++)
@@ -434,9 +477,12 @@ static void kernel_3mm(int ni_, int nj_, int nk_, int nl_, int nm_, float E_[res
     matmul(ni_, nj_, nl_, E_, F_, G_, ni, nj, nl, E, F, G);
 }
 #else
-static void kernel_3mm(int ni, int nj, int nk, int nl, int nm, float E[restrict ni][nj], const float A[restrict ni][nk],
-                       const float B[restrict nk][nj], float F[restrict nj][nl], const float C[restrict nj][nm],
-                       const float D[restrict nm][nl], float G[restrict ni][nl]) {
+#define kernel_3mm(_ni, _nj, _nk, _nl, _nm, _E, _A, _B, _F, _C, _D, _G) \
+    kernel_3mm_orig((_ni), (_nj), (_nk), (_nl), (_nm), (_E), (_A), (_B), (_F), (_C), (_D), (_G))
+#endif
+static void kernel_3mm_orig(int ni, int nj, int nk, int nl, int nm, float E[restrict ni][nj],
+                            const float A[restrict ni][nk], const float B[restrict nk][nj], float F[restrict nj][nl],
+                            const float C[restrict nj][nm], const float D[restrict nm][nl], float G[restrict ni][nl]) {
     int i, j, k;
 
     for (i = 0; i < ni; i++) {
@@ -466,7 +512,70 @@ static void kernel_3mm(int ni, int nj, int nk, int nl, int nm, float E[restrict 
         }
     }
 }
+
+bool verify(bool dump, int ni, int nj, int nk, int nl, int nm, const float E[restrict ni][nj],
+            const float A[restrict ni][nk], const float B[restrict nk][nj], const float F[restrict nj][nl],
+            const float C[restrict nj][nm], const float D[restrict nm][nl], const float G[restrict ni][nl]) {
+    #ifdef COMPUTE_DUMPS
+    float(*A_)[nk] = malloc(ni * sizeof(*A_));
+    float(*B_)[nj] = malloc(nk * sizeof(*B_));
+    float(*E_)[nj] = malloc(ni * sizeof(*E_));
+    float(*C_)[nm] = malloc(nj * sizeof(*C_));
+    float(*D_)[nl] = malloc(nm * sizeof(*D_));
+    float(*F_)[nl] = malloc(nj * sizeof(*F_));
+    float(*G_)[nl] = malloc(ni * sizeof(*G_));
+    init_array_orig(ni, nj, nk, nl, nm, A_, B_, C_, D_);
+    kernel_3mm_orig(ni, nj, nk, nl, nm, E_, A_, B_, F_, C_, D_, G_);
+    if (dump) {
+        int fd = creat("MATRIX" STR(NI), 0660);
+        write(fd, G_, ni * sizeof(*G_));
+        close(fd);
+    }
+    for (int i = 0; i < ni; ++i) {
+        for (int l = 0; l < nl; ++l) {
+            if (fabsf(G[i][l] - G_[i][l]) >= EPS) {
+                if (dump) {
+                    puts("CORRECT DUMP:");
+                    /* print_array(ni, nl, G_); */
+                    puts("WRONG DUMP:");
+                    /* print_array(ni, nl, G); */
+                }
+                free((void *) E_);
+                free((void *) A_);
+                free((void *) B_);
+                free((void *) F_);
+                free((void *) C_);
+                free((void *) D_);
+                free((void *) G_);
+                return false;
+            }
+        }
+    }
+    free((void *) E_);
+    free((void *) A_);
+    free((void *) B_);
+    free((void *) F_);
+    free((void *) C_);
+    free((void *) D_);
+    free((void *) G_);
+    return true;
+#else
+    for (int i = 0; i < ni; ++i) {
+        for (int l = 0; l < nl; ++l) {
+            if (fabsf(G[i][l] - ans_mat[i][l]) >= EPS) {
+                if (dump) {
+                    puts("CORRECT DUMP:");
+                    print_array(ni, nl, ans_mat);
+                    puts("WRONG DUMP:");
+                    print_array(ni, nl, G);
+                }
+                return false;
+            }
+        }
+    }
+    return true;
 #endif
+}
 
 int main(int argc, char **argv) {
     const int ni_ = NI;
@@ -534,10 +643,19 @@ int main(int argc, char **argv) {
 
     bench_timer_stop();
     bench_timer_print();
-
-    if (argc > 42 && !strcmp(argv[0], "")) {
-        print_array(ni_, nl_, *G_);
+    bool dump = false;
+    if ((argc > 1 && !strcmp(argv[1], "dump")) || (argc > 2 && !strcmp(argv[2], "dump"))) {
+        dump = true;
+        /* print_array(ni_, nl_, *G_); */
     }
+    if ((argc > 1 && !strcmp(argv[1], "verify")) || (argc > 2 && !strcmp(argv[2], "verify"))) {
+        if (verify(dump, ni_, nj_, nk_, nl_, nm_, *E_, *A_, *B_, *F_, *C_, *D_, *G_)) {
+            puts("PASSED!");
+        } else {
+            puts("FAILED!");
+        }
+    }
+
 
     free((void *) E_);
     free((void *) A_);
