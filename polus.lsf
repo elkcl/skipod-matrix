@@ -11,28 +11,11 @@ export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home_edu/edu-cmc-skpod24-328/edu-cmc-sk
 export OMP_MAX_ACTIVE_LEVELS=2
 export OMP_PLACES=cores
 
-for p in 1 2 4 8 16 20 40 60 80 100 120 140 160; do
-    echo "running $p threads"
-    export OMP_NUM_THREADS=$p
-
-    echo "small"
-    ./out_small
-
-    echo "medium"
-    ./out_medium
-
-    echo "large"
-    ./out_large
-
-    echo "extralarge"
-    ./out_extralarge
-
-    echo "extraextralarge"
-    ./out_extraextralarge
-
-    echo "m6400"
-    ./out_m6400
-
-    echo "m9600"
-    ./out_m9600
+for f in small medium large extralarge extraextralarge m6400; do
+    echo "==$f=="
+    for p in 1 2 4 8 16 20 40 60 80 100 120 140 160; do
+        echo "running $p threads"
+        export OMP_NUM_THREADS=$p
+        eval "./out_$f"
+    done
 done
