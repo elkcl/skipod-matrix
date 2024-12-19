@@ -3,15 +3,16 @@
 #BSUB -W 00:30
 #BSUB -o log_stdout.txt
 #BSUB -e log_stderr.txt
+#BSUB -J elk_omp
 
-LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home_edu/edu-cmc-skpod24-328/edu-cmc-skpod24-328-10/gcc-install/lib
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home_edu/edu-cmc-skpod24-328/edu-cmc-skpod24-328-10/gcc-install/lib
 
-OMP_MAX_ACTIVE_LEVELS=2
-OMP_PLACES=cores
+export OMP_MAX_ACTIVE_LEVELS=2
+export OMP_PLACES=cores
 
-for p in 1, 2, 4, 8, 16, 20, 40, 60, 80, 100, 120, 140, 160; do
+for p in 1 2 4 8 16 20 40 60 80 100 120 140 160; do
     echo "running $p threads"
-    OMP_NUM_THREADS=$p
+    export OMP_NUM_THREADS=$p
 
     echo "small"
     ./out_small
