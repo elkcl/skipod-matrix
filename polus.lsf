@@ -1,8 +1,9 @@
 #BSUB -n 20
 #BSUB -q short
 #BSUB -W 00:30
-#BSUB -o log_stdout.txt
-#BSUB -e log_stderr.txt
+#BSUB -R "span[hosts=1]"
+#BSUB -o logs/omp_for.%J.out
+#BSUB -e logs/omp_for.%J.err
 #BSUB -J elk_omp
 
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home_edu/edu-cmc-skpod24-328/edu-cmc-skpod24-328-10/gcc-install/lib
