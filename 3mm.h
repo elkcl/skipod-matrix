@@ -1,6 +1,6 @@
 #ifndef _3MM_H
 #define _3MM_H 
-# if !defined(MINI_DATASET) && !defined(SMALL_DATASET) && !defined(MEDIUM_DATASET) && !defined(LARGE_DATASET) && !defined(EXTRALARGE_DATASET) && !defined(EXTRAEXTRALARGE_DATASET)
+# if !defined(MINI_DATASET) && !defined(SMALL_DATASET) && !defined(MEDIUM_DATASET) && !defined(LARGE_DATASET) && !defined(EXTRALARGE_DATASET) && !defined(EXTRAEXTRALARGE_DATASET) && !defined(M9600_DATASET)
 #define LARGE_DATASET
 # endif
 # if !defined(NI) && !defined(NJ) && !defined(NK) && !defined(NL) && !defined(NM)
@@ -45,6 +45,13 @@
 #define NK 4000
 #define NL 4400
 #define NM 4800
+# endif
+# ifdef M9600_DATASET
+#define NI 9600
+#define NJ 10800
+#define NK 12000
+#define NL 13200
+#define NM 14400
 # endif
 #endif
 #include <stdio.h>

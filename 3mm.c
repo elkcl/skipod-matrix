@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 /* Include benchmark-specific header. */
 #include "3mm.h"
 #include <stdlib.h>
@@ -7,20 +8,25 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <omp.h>
+#include <sched.h>
 
-#define Q(_v) #_v
-#define STR(_v) Q(_v)
 #define MIN(_A, _B) (((_A) < (_B)) ? _A : _B)
 #define MAX(_A, _B) (((_A) > (_B)) ? _A : _B)
 #define ROUNDDOWN(_A, _N) ((_A) / (_N) * (_N))
 #define ROUNDUP(_A, _N) (((_A) + (_N) - 1) / (_N) * (_N))
-#define EPS 0.01f
+
+#ifdef VERIFY
+#define Q(_v) #_v
+#define STR(_v) Q(_v)
 #define PASTER3(x,y,z) x ## y ## z
 #define CONCAT3(x,y,z) PASTER3(x,y,z)
+
+#define EPS 0.01f
 
 #ifndef COMPUTE_DUMPS
 extern int CONCAT3(_binary_MATRIX, NI, _dump_start);
 float (*ans_mat)[NL] = (float (*)[NL]) &CONCAT3(_binary_MATRIX, NI, _dump_start);
+#endif
 #endif
 
 double bench_t_start, bench_t_end;
@@ -202,10 +208,12 @@ void matmul(int ni_, int nk_, int nj_, const float A_[restrict ni_][nk_], const 
     /* const int s3 = 64; */
     /* const int s2 = 120; */
     /* const int s1 = 240; */
+    omp_set_num_threads(omp_get_max_threads() / 2);
     #pragma omp parallel for collapse(2) proc_bind(spread)
     for (int i3 = 0; i3 < nj; i3 += s3) {
         // now we are working with b[:][i3:i3+s3]
         for (int i2 = 0; i2 < ni; i2 += s2) {
+            /* printf("External thread %3d is running on CPU %3d\n", omp_get_thread_num(), sched_getcpu()); */
             // now we are working with a[i2:i2+s2][:]
             for (int i1 = 0; i1 < nk; i1 += s1) {
                 // now we are working with b[i1:i1+s1][i3:i3+s3]
@@ -214,6 +222,7 @@ void matmul(int ni_, int nk_, int nj_, const float A_[restrict ni_][nk_], const 
                 #pragma omp parallel for collapse(2) proc_bind(close) num_threads(2)
                 for (int x = i2; x < MIN(i2 + s2, ni); x += 6) {
                     for (int y = i3; y < MIN(i3 + s3, nj); y += 16) {
+                        /* printf("Internal thread %3d is running on CPU %3d\n", omp_get_thread_num(), sched_getcpu()); */
                         microkernel(x, y, i1, MIN(i1 + s1, nk), nk, nj, A, (vec *) B, (vec *) C);
                     }
                 }
@@ -411,6 +420,8 @@ void matmul(int ni_, int nk_, int nj_, const float A_[restrict ni_][nk_], const 
     /* const int s2 = 120; */
     /* const int s1 = 240; */
 
+    omp_set_num_threads(omp_get_max_threads() / 2);
+    #pragma omp parallel for collapse(2) proc_bind(spread)
     for (int i3 = 0; i3 < nj; i3 += s3) {
         // now we are working with b[:][i3:i3+s3]
         for (int i2 = 0; i2 < ni; i2 += s2) {
@@ -419,6 +430,7 @@ void matmul(int ni_, int nk_, int nj_, const float A_[restrict ni_][nk_], const 
                 // now we are working with b[i1:i1+s1][i3:i3+s3]
                 // this equates to updating c[i2:i2+s2][i3:i3+s3]
                 // with [l:r] = [i1:i1+s1]
+                #pragma omp parallel for collapse(2) proc_bind(close) num_threads(8)
                 for (int x = i2; x < MIN(i2 + s2, ni); x += 8) {
                     for (int y = i3; y < MIN(i3 + s3, nj); y += 16) {
                         microkernel(x, y, i1, MIN(i1 + s1, nk), nk, nj, A, (vec *) B, (vec *) C);
@@ -512,7 +524,7 @@ static void kernel_3mm_orig(int ni, int nj, int nk, int nl, int nm, float E[rest
         }
     }
 }
-
+#ifdef VERIFY
 bool verify(bool dump, int ni, int nj, int nk, int nl, int nm, const float E[restrict ni][nj],
             const float A[restrict ni][nk], const float B[restrict nk][nj], const float F[restrict nj][nl],
             const float C[restrict nj][nm], const float D[restrict nm][nl], const float G[restrict ni][nl]) {
@@ -576,6 +588,7 @@ bool verify(bool dump, int ni, int nj, int nk, int nl, int nm, const float E[res
     return true;
 #endif
 }
+#endif
 
 int main(int argc, char **argv) {
     const int ni_ = NI;
@@ -643,6 +656,7 @@ int main(int argc, char **argv) {
 
     bench_timer_stop();
     bench_timer_print();
+    #ifdef VERIFY
     bool dump = false;
     if ((argc > 1 && !strcmp(argv[1], "dump")) || (argc > 2 && !strcmp(argv[2], "dump"))) {
         dump = true;
@@ -655,6 +669,7 @@ int main(int argc, char **argv) {
             puts("FAILED!");
         }
     }
+    #endif
 
 
     free((void *) E_);
