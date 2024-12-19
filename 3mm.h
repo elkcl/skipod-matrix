@@ -1,6 +1,6 @@
 #ifndef _3MM_H
 #define _3MM_H 
-# if !defined(MINI_DATASET) && !defined(SMALL_DATASET) && !defined(MEDIUM_DATASET) && !defined(LARGE_DATASET) && !defined(EXTRALARGE_DATASET) && !defined(EXTRAEXTRALARGE_DATASET) && !defined(M9600_DATASET)
+# if !defined(MINI_DATASET) && !defined(SMALL_DATASET) && !defined(MEDIUM_DATASET) && !defined(LARGE_DATASET) && !defined(EXTRALARGE_DATASET) && !defined(EXTRAEXTRALARGE_DATASET) && !defined(M6400_DATASET) && !defined(M9600_DATASET)
 #define LARGE_DATASET
 # endif
 # if !defined(NI) && !defined(NJ) && !defined(NK) && !defined(NL) && !defined(NM)
