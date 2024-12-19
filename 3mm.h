@@ -46,6 +46,13 @@
 #define NL 4400
 #define NM 4800
 # endif
+# ifdef M6400_DATASET
+#define NI 6400
+#define NJ 7200
+#define NK 8000
+#define NL 8800
+#define NM 9600
+# endif
 # ifdef M9600_DATASET
 #define NI 9600
 #define NJ 10800
