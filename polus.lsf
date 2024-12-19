@@ -1,6 +1,6 @@
 #BSUB -n 20
-#BSUB -q short
-#BSUB -W 00:30
+#BSUB -q normal
+#BSUB -W 01:30
 #BSUB -R "span[hosts=1]"
 #BSUB -o logs/omp_for.%J.out
 #BSUB -e logs/omp_for.%J.err
@@ -12,10 +12,13 @@ export OMP_MAX_ACTIVE_LEVELS=2
 export OMP_PLACES=cores
 
 for f in small medium large extralarge extraextralarge m6400; do
-    echo "==$f=="
+    echo "===$f==="
     for p in 1 2 4 8 16 20 40 60 80 100 120 140 160; do
-        echo "running $p threads"
+        echo "==running $p threads=="
         export OMP_NUM_THREADS=$p
-        eval "./out_$f"
+        for c in 1 2 3; do
+            echo "=run $c="
+            eval "./out_$f"
+        done
     done
 done
