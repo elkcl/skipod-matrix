@@ -420,7 +420,7 @@ void matmul(int ni_, int nk_, int nj_, const float A_[restrict ni_][nk_], const 
     /* const int s2 = 120; */
     /* const int s1 = 240; */
 
-    omp_set_num_threads(omp_get_max_threads() / 2);
+    omp_set_num_threads(ROUNDUP(omp_get_max_threads(), 8) / 8);
     #pragma omp parallel for collapse(2) proc_bind(spread)
     for (int i3 = 0; i3 < nj; i3 += s3) {
         // now we are working with b[:][i3:i3+s3]
